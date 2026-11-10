@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1e3a8a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Agenda Révision VHF</title>
+<link rel="manifest" href="manifest.json">
+<meta name="application-name" content="Agenda Révision VHF">
+<meta name="apple-mobile-web-app-title" content="Agenda Révision VHF">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --blue: #1e3a8a; --blue-light: #eff6ff;
+  --green: #059669; --green-light: #d1fae5; --green-border: #6ee7b7;
+  --red: #dc2626; --red-light: #fee2e2; --red-border: #fca5a5;
+  --orange: #c2410c; --orange-light: #ffedd5; --orange-border: #fdba74;
+  --gray: #6b7280; --gray-light: #f3f4f6; --gray-border: #e5e7eb;
+  --text: #111827; --text-muted: #6b7280; --bg: #f1f5f9; --white: #ffffff;
+  --radius: 10px;
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); padding-bottom: 2rem; }
+
+.app-header { background: var(--blue); color: white; padding: 12px 20px; display: flex; align-items: center; gap: 15px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+.app-header img { height: 45px; background: white; padding: 4px; border-radius: 5px; }
+.app-header h1 { font-size: 16px; font-weight: 600; flex: 1; }
+.app-header button { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.45); border-radius: 7px; padding: 7px 12px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+
+.container { max-width: 640px; margin: 0 auto; padding: 16px; }
+
+.month-hdr { font-size: 13px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 0.04em; margin: 20px 0 10px; }
+.month-hdr:first-child { margin-top: 0; }
+
+.ev-item { display: flex; align-items: center; gap: 12px; background: var(--white); border-radius: var(--radius); padding: 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); border-left: 4px solid var(--gray-border); }
+.ev-item.overdue { border-left-color: var(--red); background: var(--red-light); }
+.ev-item.soon { border-left-color: var(--orange); background: var(--orange-light); }
+.ev-item.ok { border-left-color: var(--green); }
+
+.ev-date { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 50px; }
+.ev-date .d { font-size: 20px; font-weight: 800; color: var(--blue); line-height: 1; }
+.ev-date .m { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
+
+.ev-info { flex: 1; min-width: 0; }
+.ev-labo { font-size: 14px; font-weight: 700; }
+.ev-modele { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+.ev-badge { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+.ev-badge.overdue { background: var(--red); color: white; }
+.ev-badge.soon { background: var(--orange); color: white; }
+.ev-badge.ok { background: var(--green-light); color: var(--green); }
+
+.empty, .error { text-align: center; color: var(--text-muted); font-size: 13px; padding: 40px 20px; }
+.error { color: var(--red); }
+</style>
+</head>
+<body>
+
+<div id="installBanner" style="display:none; background:#0fb4dc; color:white; padding:10px 16px; align-items:center; justify-content:space-between; gap:10px; font-size:13px; font-weight:600;">
+  <span>📲 Installer l'application sur votre écran</span>
+  <div style="display:flex; gap:8px;">
+    <button onclick="installApp()" style="background:white; color:#0b6a8a; border:none; border-radius:6px; padding:6px 12px; font-weight:700; font-size:12px; cursor:pointer;">Installer</button>
+    <button onclick="document.getElementById('installBanner').style.display='none'" style="background:rgba(255,255,255,0.2); color:white; border:none; border-radius:6px; padding:6px 10px; font-size:12px; cursor:pointer;">✕</button>
+  </div>
+</div>
+<div id="updateBanner" style="display:none; background:#059669; color:white; padding:10px 16px; align-items:center; justify-content:space-between; gap:10px; font-size:13px; font-weight:600;">
+  <span>🔄 Nouvelle version disponible !</span>
+  <button onclick="applyUpdate()" style="background:white; color:#059669; border:none; border-radius:6px; padding:6px 12px; font-weight:700; font-size:12px; cursor:pointer;">Mettre à jour</button>
+</div>
+<div class="app-header">
+  <img src="logo.png" alt="Evona Logo">
+  <h1>Agenda Révision VHF</h1>
+  <button onclick="loadRevisions()">🔄 Actualiser</button>
+</div>
+
+<div class="container">
+  <div id="list"><p class="empty">Chargement...</p></div>
+</div>
+
+<script>
+const PROXY_CONFIG = {
+  url: "https://erp.evonaservice.fr/evona-proxy/dolibarr-proxy.php",
+  token: "56d27e04b4e84023e0706af26b975499da22600a95ff258c811785bab3589d17"
+};
+
+const MOIS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+
+async function loadRevisions() {
+  const listEl = document.getElementById('list');
+  listEl.innerHTML = '<p class="empty">Chargement...</p>';
+  try {
+    const res = await fetch(PROXY_CONFIG.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Token': PROXY_CONFIG.token },
+      body: JSON.stringify({ action: 'list_revisions' })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.message || `HTTP ${res.status}`);
+    renderList(data.events || []);
+  } catch (e) {
+    listEl.innerHTML = `<p class="error">⚠️ Impossible de charger l'agenda : ${e.message}</p>`;
+  }
+}
+
+function renderList(events) {
+  const listEl = document.getElementById('list');
+  if (events.length === 0) {
+    listEl.innerHTML = '<p class="empty">Aucune révision planifiée pour l\'instant.</p>';
+    return;
+  }
+
+  events.sort((a, b) => (a.datep || 0) - (b.datep || 0));
+
+  const now = Date.now() / 1000;
+  const soonLimit = now + 30 * 86400;
+  let html = '';
+  let currentMonth = '';
+
+  events.forEach(ev => {
+    if (!ev.datep) return;
+    const date = new Date(ev.datep * 1000);
+    const monthKey = `${MOIS[date.getMonth()]} ${date.getFullYear()}`;
+    if (monthKey !== currentMonth) {
+      html += `<div class="month-hdr">${monthKey}</div>`;
+      currentMonth = monthKey;
+    }
+
+    let statusClass = 'ok', statusLabel = 'À venir';
+    if (ev.datep < now) { statusClass = 'overdue'; statusLabel = 'En retard'; }
+    else if (ev.datep < soonLimit) { statusClass = 'soon'; statusLabel = 'Bientôt'; }
+
+    html += `
+      <div class="ev-item ${statusClass}">
+        <div class="ev-date">
+          <div class="d">${date.getDate()}</div>
+          <div class="m">${MOIS[date.getMonth()].slice(0, 3)}</div>
+        </div>
+        <div class="ev-info">
+          <div class="ev-labo">${ev.labo || 'Laboratoire inconnu'}</div>
+          <div class="ev-modele">Modèle : ${ev.modele || '-'}</div>
+        </div>
+        <span class="ev-badge ${statusClass}">${statusLabel}</span>
+      </div>`;
+  });
+
+  listEl.innerHTML = html;
+}
+
+// ── PWA Install ──
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('installBanner').style.display = 'flex';
+});
+function installApp() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(() => {
+    deferredPrompt = null;
+    document.getElementById('installBanner').style.display = 'none';
+  });
+}
+function applyUpdate() {
+  const banner = document.getElementById('updateBanner');
+  const worker = banner._newWorker;
+  if (worker) worker.postMessage('SKIP_WAITING');
+  banner.style.display = 'none';
+}
+window.addEventListener('appinstalled', () => {
+  document.getElementById('installBanner').style.display = 'none';
+});
+
+loadRevisions();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('sw.js');
+      console.log('[App] SW enregistré:', reg.scope);
+
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            document.getElementById('updateBanner').style.display = 'flex';
+            document.getElementById('updateBanner')._newWorker = newWorker;
+          }
+        });
+      });
+
+      reg.update();
+    } catch(err) {
+      console.log('[App] SW erreur:', err);
+    }
+  });
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload();
+  });
+}
+</script>
+</body>
+</html>
